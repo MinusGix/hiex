@@ -3,10 +3,11 @@ mod constrained_wrapper;
 mod hiex;
 pub use crate::hiex::*;
 pub mod action;
+pub mod truncate;
 
 /// Get position in stream using seeks.
 /// FIXME: This only exists since the rust version is currently only in nightly
-pub(crate) fn stream_position<S>(mut seeker: S) -> std::io::Result<u64>
+pub(crate) fn stream_position<S>(seeker: &mut S) -> std::io::Result<u64>
 where
     S: std::io::Seek,
 {
@@ -19,12 +20,12 @@ where
 /// If there was an error then the position is unspecified.
 /// FIXME: This only exists since the rust version is currently only in nightly
 /// If this errors, then the position in `seeker` is not defined.
-pub(crate) fn stream_len<S>(mut seeker: S) -> std::io::Result<u64>
+pub(crate) fn stream_len<S>(seeker: &mut S) -> std::io::Result<u64>
 where
     S: std::io::Seek,
 {
     // Get the current position, so that we can restore our position.
-    let position = stream_position(&mut seeker)?;
+    let position = stream_position(seeker)?;
     let length = seeker.seek(std::io::SeekFrom::End(0))?;
 
     // If we're still at the starting position, let's not seek again.

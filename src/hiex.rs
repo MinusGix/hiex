@@ -1,6 +1,7 @@
 use crate::{
     action::{Action, ActionError, ActionList, MemoryUsage},
     stream_len,
+    truncate::Truncate,
 };
 use std::io::{Read, Seek, SeekFrom, Write};
 use usize_cast::FromUsize;
@@ -118,14 +119,42 @@ where
     // }
 
     /// Seeks to start of self, and starts copying data over to the `writer`.
+    /// This does NOT truncate the `writer`. This means that if we are given a file that has twenty
+    /// bytes but we only want to save with 10 then it will be [new ten][old last ten], which is
+    /// usually not what you want.
     /// NOTE: It will start copying to where the `writer` is at when given! It does not seek the
     /// `writer` to the start!
-    pub fn save_to<W>(&mut self, mut writer: W) -> std::io::Result<()>
+    pub fn save_to_no_trunc<W>(&mut self, writer: &mut W) -> std::io::Result<()>
     where
         W: Write,
     {
         self.seek(SeekFrom::Start(0))?;
-        std::io::copy(self, &mut writer)?;
+        std::io::copy(self, writer)?;
+        Ok(())
+    }
+
+    // TODO: a save function that performs no seeking.s
+
+    /// Seeks to the start of self.
+    /// If the destination has more bytes than the source then it truncates the destination
+    /// Note that this function assumes that writing more bytes than the destination originally
+    /// started with will expand it.
+    pub fn save_to<W>(&mut self, writer: &mut W) -> std::io::Result<()>
+    where
+        W: Write + Truncate + Seek,
+    {
+        let destination_length = stream_len(writer)?;
+        let self_length = stream_len(self)?;
+
+        if destination_length > self_length {
+            // If we don't have enough bytes to write to the destination then it needs truncation
+            writer.truncate(self_length)?;
+        }
+
+        self.save_to_no_trunc(writer)?;
+
+        debug_assert_eq!(stream_len(writer)?, stream_len(self)?);
+
         Ok(())
     }
 }
