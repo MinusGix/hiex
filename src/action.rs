@@ -9,10 +9,11 @@ where
     F: Read + Seek,
 {
     /// Perform an action
-    fn apply(&mut self, data: &mut F, _other: E) -> std::io::Result<()>;
+    /// Currently no assurances are made about the seek position
+    fn apply(&mut self, data: &mut F, _other: E) -> Result<(), ActionError>;
     /// Undo this action.
     /// One can assume that the action has already been applied.
-    fn unapply(&mut self, data: &mut F, _other: E) -> std::io::Result<()>;
+    fn unapply(&mut self, data: &mut F, _other: E) -> Result<(), ActionError>;
 
     // TODO: can_undo / can_redo?
 }
@@ -27,6 +28,10 @@ pub trait MemoryUsage {
 pub enum ActionError {
     /// Unrecoverable. Action is removed from list.
     IoError(std::io::Error),
+    Custom(Box<dyn std::error::Error>),
+    // TODO: it would be good to provide a manner of specifying why it was invalid.
+    /// The action was invalid in some way.
+    Invalid,
 }
 impl From<std::io::Error> for ActionError {
     fn from(err: std::io::Error) -> Self {
@@ -119,7 +124,7 @@ where
         }
     }
 
-    /// Returns `None` if there was no actions to undo.
+    /// Returns `Ok(None)` if there was no actions to undo.
     pub fn undo(&mut self, reader: &mut F, other: E) -> Result<Option<()>, ActionError> {
         if self.is_past_empty() {
             // No actions to undo
@@ -132,7 +137,7 @@ where
                 .unapply(reader, other)
             {
                 // Failure. Editor is in a somewhat indeterminate state now.
-                Err(err.into())
+                Err(err)
             } else {
                 // Move back a space
                 // We do this here rather than before the action, because repeated undoes have a
@@ -150,7 +155,7 @@ where
             Ok(None)
         } else if let Err(err) = self.actions[self.index].apply(reader, other) {
             // Failure. Editor is in a somewhat indeterminate state now.
-            Err(err.into())
+            Err(err)
         } else {
             // Move forward a space
             self.index = self.index.checked_add(1).expect("Failed to do next action, as there was too many actions (which should probably be impossible)!");
@@ -168,7 +173,7 @@ where
         A: 'static + Action<F, E>,
     {
         if let Err(err) = action.apply(reader, other) {
-            Err((action, err.into()))
+            Err((action, err))
         } else {
             self.clear_future();
             // We've applied the action correctly, so add it to the vector.

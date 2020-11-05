@@ -1,4 +1,7 @@
-use crate::action::{Action, ActionError, ActionList, MemoryUsage};
+use crate::{
+    action::{Action, ActionError, ActionList, MemoryUsage},
+    stream_len,
+};
 use std::io::{Read, Seek, SeekFrom, Write};
 use usize_cast::FromUsize;
 
@@ -160,6 +163,8 @@ where
     }
 }
 
+/// An action where bytes are edited
+/// NOTE: if bytes written would increase the size of the file then that is an _error_
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct EditAction {
     pub position: u64,
@@ -179,14 +184,34 @@ impl<F, E> Action<F, E> for EditAction
 where
     F: Read + Seek + Write,
 {
-    fn apply(&mut self, data: &mut F, _other: E) -> std::io::Result<()> {
+    fn apply(&mut self, mut data: &mut F, _other: E) -> Result<(), ActionError> {
+        let length = stream_len(&mut data)?;
+        let new_data_len = u64::from_usize(self.new_data.len());
+        println!(
+            "Position: {}, Length: {}, new_data_len: {}",
+            self.position, length, new_data_len
+        );
+        // If we would exceed the file size then the action was invalid to perform.
+        if self.position.saturating_add(new_data_len) >= length {
+            return Err(ActionError::Invalid);
+        }
+
+        // Read in the data to store it for if the action is undone.
         data.seek(SeekFrom::Start(self.position))?;
-        data.write_all(&self.new_data)
+        self.previous_data.resize(self.new_data.len(), 0);
+        data.read_exact(&mut self.previous_data)?;
+
+        // TODO: if this fails, try writing previous data?
+        data.seek(SeekFrom::Start(self.position))?;
+        data.write_all(&self.new_data)?;
+
+        Ok(())
     }
 
-    fn unapply(&mut self, data: &mut F, _other: E) -> std::io::Result<()> {
+    fn unapply(&mut self, data: &mut F, _other: E) -> Result<(), ActionError> {
         data.seek(SeekFrom::Start(self.position))?;
-        data.write_all(&self.previous_data)
+        data.write_all(&self.previous_data)?;
+        Ok(())
     }
 }
 impl MemoryUsage for EditAction {

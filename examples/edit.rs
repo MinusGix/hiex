@@ -1,4 +1,4 @@
-use hiex::{EditAction, Hiex};
+use hiex::{action::ActionError, EditAction, Hiex};
 use std::io::{Cursor, Seek, SeekFrom};
 
 fn print_bytes(data: &[u8]) {
@@ -40,22 +40,37 @@ fn main() {
     print_bytes(&data);
 
     let length = hex.length().expect("Failed to get length");
-    hex.add_action(EditAction::new(length, b"0123".to_vec()), ())
-        .expect("Failed to write");
-    // hex.write_at(length, b"0123").expect("Failed to write");
-    let data = hex.read_amount_at(length, 4).expect("Failed to read");
-    assert_eq!(data.len(), 4);
-    assert_eq!(data, b"0123");
-    print!("Data: ");
-    print_bytes(&data);
+    let _result = hex
+        .add_action(EditAction::new(length, b"0123".to_vec()), ())
+        .expect_err("Expected error when trying to edit past end of file.");
 
     hex.save_to(&mut destination_cursor)
         .expect("Failed to save to writer");
 
     let data = destination_cursor.into_inner();
-    assert_eq!(data, b"AZDXEFGHIJKLMNOPQRSTUVWXYZ0123");
+    assert_eq!(data, b"AZDXEFGHIJKLMNOPQRSTUVWXYZ");
     print!("Dest Data: ");
     print_bytes(data);
 
+    hex.add_action(EditAction::new(5, b"01".to_vec()), ())
+        .expect("Failed to add action");
+    let data = hex.read_amount_at(0, 26).expect("Failed to read");
+    assert_eq!(data.len(), 26);
+    assert_eq!(data, b"AZDXE01HIJKLMNOPQRSTUVWXYZ");
+    print!("Data: ");
+    print_bytes(&data);
+
     hex.undo(()).expect("Failed to undo");
+    let data = hex.read_amount_at(0, 10).expect("Failed to read");
+    assert_eq!(data.len(), 10);
+    assert_eq!(data, b"AZDXEFGHIJ");
+    print!("Data: ");
+    print_bytes(&data);
+
+    hex.undo(()).expect("Failed to undo");
+    let data = hex.read_amount_at(0, 10).expect("Failed to read");
+    assert_eq!(data.len(), 10);
+    assert_eq!(data, b"ABCDEFGHIJ");
+    print!("Data: ");
+    print_bytes(&data);
 }

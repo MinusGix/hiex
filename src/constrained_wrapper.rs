@@ -5,6 +5,8 @@ use std::{
 };
 use usize_cast::IntoUsize;
 
+use crate::{stream_len, stream_position};
+
 pub type ViewRange<T> = Range<T>;
 
 /// 'Sorts' a [`RangeInclusive`]'s values.
@@ -19,35 +21,6 @@ where
     } else {
         range
     }
-}
-
-/// Get position in stream using seeks.
-/// FIXME: This only exists since the rust version is currently only in nightly
-fn stream_position<S>(mut seeker: S) -> std::io::Result<u64>
-where
-    S: Seek,
-{
-    // Seeking to the current position gives our position
-    seeker.seek(SeekFrom::Current(0))
-}
-
-/// Get the stream length using seeks
-/// FIXME: This only exists since the rust version is currently only in nightly
-/// If this errors, then the position in `seeker` is not defined.
-fn stream_len<S>(mut seeker: S) -> std::io::Result<u64>
-where
-    S: Seek,
-{
-    // Get the current position, so that we can restore our position.
-    let position = stream_position(&mut seeker)?;
-    let length = seeker.seek(SeekFrom::End(0))?;
-
-    // If we're still at the starting position, let's not seek again.
-    if position != length {
-        seeker.seek(SeekFrom::Start(position))?;
-    }
-
-    Ok(length)
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
