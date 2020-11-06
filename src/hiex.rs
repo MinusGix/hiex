@@ -216,10 +216,6 @@ where
     fn apply(&mut self, mut data: &mut F, _other: E) -> Result<(), ActionError> {
         let length = stream_len(&mut data)?;
         let new_data_len = u64::from_usize(self.new_data.len());
-        println!(
-            "Position: {}, Length: {}, new_data_len: {}",
-            self.position, length, new_data_len
-        );
         // If we would exceed the file size then the action was invalid to perform.
         if self.position.saturating_add(new_data_len) >= length {
             return Err(ActionError::Invalid);
